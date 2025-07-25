@@ -49,14 +49,17 @@ export default function SummaryStep({ paperId }: SummaryStepProps) {
   if (loading) {
     return (
       <div className="space-y-4">
-        <h2 className="text-xl font-bold">DeepMinder's 요약</h2>
+        <h2 className="text-xl font-bold">DeepMinder&apos;s 요약</h2>
         <div className="space-y-4">
           {Array.from({ length: 3 }, (_, index) => (
             <div key={index} className="space-y-2">
               <div className="font-semibold">{index + 1}.</div>
               {Array.from({ length: 3 }, (_, i) => (
-                <div key={i} className="h-3 bg-gray-300 rounded animate-pulse" 
-                     style={{ width: `${Math.random() * 80 + 20}%` }} />
+                <div
+                  key={i}
+                  className="h-3 bg-gray-300 rounded animate-pulse"
+                  style={{ width: `${Math.random() * 80 + 20}%` }}
+                />
               ))}
             </div>
           ))}
@@ -68,7 +71,7 @@ export default function SummaryStep({ paperId }: SummaryStepProps) {
   if (error) {
     return (
       <div className="space-y-4">
-        <h2 className="text-xl font-bold">DeepMinder's 요약</h2>
+        <h2 className="text-xl font-bold">DeepMinder&apos;s 요약</h2>
         <div className="text-red-500">오류: {error}</div>
       </div>
     )
@@ -76,7 +79,7 @@ export default function SummaryStep({ paperId }: SummaryStepProps) {
 
   return (
     <div className="space-y-4">
-      <h2 className="text-xl font-bold">DeepMinder's 요약</h2>
+      <h2 className="text-xl font-bold">DeepMinder&apos;s 요약</h2>
       <div className="space-y-4">
         {summaries.length > 0 ? (
           summaries.map((summary, index) => (
@@ -95,4 +98,4 @@ export default function SummaryStep({ paperId }: SummaryStepProps) {
       </div>
     </div>
   )
-} 
+}
