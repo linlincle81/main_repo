@@ -1,191 +1,263 @@
+
+//이것만 건들자
+// src/app/topics/[topicId]/page.tsx
 'use client'
 
-import { useState, useEffect } from 'react'
-import {
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend,
-  PieChart, Pie, Cell,
-  LineChart, Line
-} from 'recharts'
+import React, { useEffect, useState } from 'react'
+import { useRouter, useParams } from 'next/navigation'
+import { useAuth } from '@/hooks/useAuth'
+import { supabase } from '@/lib/supabaseClient'
+import type { Paper } from '@/models/paper'
+import Sidebar from '@/components/Sidebar'
+import Header from '@/components/Header'
+import PaperCard from '@/components/ui/PaperCard'
+import EditPaperModal from '@/components/modals/EditPaperModal'
+import { PdfUploadModal } from '@/components'
+import { ExclamationTriangleIcon, CheckCircleIcon, PlusIcon } from '@heroicons/react/24/outline'
 
-// ✅ 막대그래프: 월별 학습 시간(시간 단위)
-const barData = [
-  { month: '3월', hours: 12 },
-  { month: '4월', hours: 18 },
-  { month: '5월', hours: 26 },
-  { month: '6월', hours: 30 },
-  { month: '7월', hours: 42 },
-]
 
-// ✅ 원형그래프: 퀴즈 정답률 분포
-const pieData = [
-  { name: '정답', value: 70 },
-  { name: '오답', value: 20 },
-  { name: '부분정답', value: 10 },
-]
-const COLORS = ['#00C49F', '#FF8042', '#FFBB28']
+export default function TopicPage() {
+  const params = useParams()
+  const router = useRouter()
+  const { user, loading } = useAuth()
+  const topicId = params.topicId as string
 
-// ✅ 선형그래프: 주차별 학습 진도율(%)
-const lineData = [
-  { week: '1주차', progress: 10 },
-  { week: '2주차', progress: 25 },
-  { week: '3주차', progress: 45 },
-  { week: '4주차', progress: 60 },
-  { week: '5주차', progress: 80 },
-  { week: '6주차', progress: 95 },
-]
-
-export default function TopicDetailPage() {
-  // ✅ Supabase에서 가져온 topic 목록
-  const [topics, setTopics] = useState<any[]>([])
-
-  // ✅ 마운트 시 목록 가져오기
+  // Sidebar에 표시할 사용자명
+  const [userName, setUserName] = useState<string>('')
   useEffect(() => {
-    fetch('/api/papers')
-      .then(res => res.json())
-      .then(setTopics)
-      .catch(err => console.error(err))
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      if (user) {
+        const meta = (user as any).user_metadata as Record<string, any>
+        setUserName(meta.name ?? user.email ?? '')
+      }
+    })
   }, [])
 
-  // ✅ 삭제 기능
-  const handleDelete = async (topic_id: number) => {
-    if (!confirm('정말로 삭제하시겠습니까?')) return
-    try {
-      const res = await fetch(`/api/papers?id=${topic_id}`, { method: 'DELETE' })
-      const data = await res.json()
-      if (data.success) {
-        setTopics(prev => prev.filter(t => t.topic_id !== topic_id))
-      } else {
-        alert('삭제 실패')
-      }
-    } catch (e) {
-      console.error(e)
-      alert('삭제 중 오류 발생')
+  // 메시지 & 모달 상태
+  const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
+  const [isUploadModalOpen, setIsUploadModalOpen] = useState(false)
+
+  // 논문 리스트 상태
+  const [papers, setPapers] = useState<Paper[]>([])
+  const [papersLoading, setPapersLoading] = useState(true)
+
+  // 수정 중인 논문
+  const [editingPaper, setEditingPaper] = useState<Paper | null>(null)
+
+  // 검색 / 뷰모드
+  const [searchQuery, setSearchQuery] = useState<string>('')
+  const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid')
+
+  // 인증 체크
+  useEffect(() => {
+    if (!loading && !user) {
+      router.replace('/login')
     }
+  }, [user, loading, router])
+
+  // 논문 불러오기
+  useEffect(() => {
+    const fetchPapers = async () => {
+      setPapersLoading(true)
+      const { data, error } = await supabase
+        .from('paper')
+        .select('*')
+        .eq('paper_topic_id', topicId)
+        .order('paper_created_at', { ascending: false })
+      if (error) {
+        console.error('논문 목록 불러오기 실패:', error.message)
+      } else {
+        setPapers(data as Paper[])
+      }
+      setPapersLoading(false)
+    }
+    if (user) fetchPapers()
+  }, [user, topicId])
+
+  const refreshPapers = async () => {
+    setPapersLoading(true)
+    const { data, error } = await supabase
+      .from('paper')
+      .select('*')
+      .eq('paper_topic_id', topicId)
+      .order('paper_created_at', { ascending: false })
+    if (error) {
+      console.error('논문 목록 갱신 실패:', error.message)
+    } else {
+      setPapers(data as Paper[])
+    }
+    setPapersLoading(false)
   }
 
-  // ✅ 수정 기능
-  const handleEdit = async (topic_id: number) => {
-    const topic = topics.find(t => t.topic_id === topic_id)
-    if (!topic) return
-    const newName = prompt('새로운 주제명을 입력하세요', topic.topic_name)
-    if (!newName || newName.trim() === '') return
-    try {
-      const res = await fetch('/api/papers', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          topic_id,
-          topic_name: newName,
-          topic_description: topic.topic_description // 기존 설명 유지
-        }),
-      })
-      const data = await res.json()
-      if (data.success) {
-        setTopics(prev =>
-          prev.map(t =>
-            t.topic_id === topic_id ? { ...t, topic_name: newName } : t
-          )
-        )
-      } else {
-        alert('수정 실패')
-      }
-    } catch (e) {
-      console.error(e)
-      alert('수정 중 오류 발생')
-    }
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
+      </div>
+    )
   }
+  if (!user) return null
+
+  const handleUploadSuccess = (filePath: string, originalFileName: string) => {
+    setMessage({ type: 'success', text: `"${originalFileName}" 업로드 완료!` })
+    setTimeout(() => setMessage(null), 3000)
+    refreshPapers()
+  }
+  const handleUploadError = (error: string) => {
+    setMessage({ type: 'error', text: error })
+    setTimeout(() => setMessage(null), 5000)
+  }
+
+  // 검색 필터
+  const filteredPapers = papers.filter(p =>
+    p.paper_title.toLowerCase().includes(searchQuery.toLowerCase())
+  )
 
   return (
-    <div className="min-h-screen bg-gray-50 p-4">
-      {/* 헤더 */}
-      <header className="flex items-center justify-between px-4 py-2 border-b bg-white">
-        <div className="text-2xl font-bold">로고 DeepMinder</div>
-        {/* 추가하기 버튼은 나중에 구현 가능 */}
-        <button className="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600 font-semibold">
-          논문 추가하기
-        </button>
-      </header>
+    <div className="flex min-h-screen">
+      <Sidebar userName={userName} />
 
-      {/* 검색창 */}
-      <div className="px-4 py-3 text-lg font-semibold">검색창</div>
+      <main className="flex-1 bg-gray-50 p-6">
+        <Header
+          searchQuery={searchQuery}
+          onSearchChange={setSearchQuery}
+          viewMode={viewMode}
+          setViewMode={setViewMode}
+          onToggleAddForm={() => setIsUploadModalOpen(true)}
+        />
 
-      {/* ✅ 그래프 영역 */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-4 bg-gray-100">
-        {/* 막대그래프 */}
-        <div className="bg-white p-4 rounded shadow flex flex-col items-center">
-          <h2 className="font-bold mb-2">월별 학습 시간</h2>
-          <BarChart width={300} height={200} data={barData}>
-            <CartesianGrid strokeDasharray="3 3" />
-            <XAxis dataKey="month" />
-            <YAxis />
-            <Tooltip />
-            <Legend />
-            <Bar dataKey="hours" fill="#8884d8" />
-          </BarChart>
-        </div>
-
-        {/* 원형그래프 */}
-        <div className="bg-white p-4 rounded shadow flex flex-col items-center">
-          <h2 className="font-bold mb-2">퀴즈 정답률</h2>
-          <PieChart width={300} height={200}>
-            <Pie
-              data={pieData}
-              cx="50%"
-              cy="50%"
-              labelLine={false}
-              outerRadius={80}
-              dataKey="value"
-            >
-              {pieData.map((entry, index) => (
-                <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-              ))}
-            </Pie>
-            <Tooltip />
-          </PieChart>
-        </div>
-
-        {/* 선형그래프 */}
-        <div className="bg-white p-4 rounded shadow flex flex-col items-center">
-          <h2 className="font-bold mb-2">주차별 학습 진도율</h2>
-          <LineChart width={300} height={200} data={lineData}>
-            <CartesianGrid strokeDasharray="3 3" />
-            <XAxis dataKey="week" />
-            <YAxis />
-            <Tooltip />
-            <Legend />
-            <Line type="monotone" dataKey="progress" stroke="#82ca9d" />
-          </LineChart>
-        </div>
-      </div>
-
-      {/* ✅ topics 리스트 */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mt-4 px-4">
-        {topics.map(topic => (
-          <div key={topic.topic_id} className="bg-white rounded shadow p-4">
-            <div className="font-bold mb-2">{topic.topic_name}</div>
-            <div className="text-sm text-gray-600 mb-2">{topic.topic_description}</div>
-            <div className="text-xs text-gray-400">
-              생성일시 {new Date(topic.topic_created_at).toLocaleString()}
-            </div>
-
-
-            <div className="mt-3 flex gap-2">
-              <button
-                className="bg-yellow-400 hover:bg-yellow-500 text-white px-3 py-1 rounded"
-                onClick={() => handleEdit(topic.topic_id)}
-              >
-                수정
-              </button>
-              <button
-                className="bg-red-500 hover:bg-red-600 text-white px-3 py-1 rounded"
-                onClick={() => handleDelete(topic.topic_id)}
-              >
-                삭제
-              </button>
-            </div>
+        {message && (
+          <div
+            className={`mb-6 p-4 rounded-md flex items-center space-x-3 ${
+              message.type === 'success' ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'
+            } border`}
+          >
+            {message.type === 'success' ? (
+              <CheckCircleIcon className="h-5 w-5 text-green-400" />
+            ) : (
+              <ExclamationTriangleIcon className="h-5 w-5 text-red-400" />
+            )}
+            <p className={`text-sm font-medium ${message.type === 'success' ? 'text-green-800' : 'text-red-800'}`}>
+              {message.text}
+            </p>
           </div>
-        ))}
-      </div>
+        )}
+
+        <PdfUploadModal
+          topicId={topicId}
+          isOpen={isUploadModalOpen}
+          onClose={() => setIsUploadModalOpen(false)}
+          onUploadSuccess={handleUploadSuccess}
+          onUploadError={handleUploadError}
+        />
+
+        <div className="mt-8">
+          <h2 className="text-lg font-semibold text-gray-900 mb-4">업로드된 논문 목록</h2>
+
+          {papersLoading ? (
+            <div className="text-gray-500">로딩 중...</div>
+          ) : filteredPapers.length > 0 ? (
+            viewMode === 'grid' ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {filteredPapers.map(paper => (
+                  <div
+                    key={paper.paper_id}
+                    className="block hover:opacity-90 cursor-pointer"
+                    onClick={e => {
+                      const tgt = e.target as HTMLElement
+                      if (tgt.closest('button')) return
+                      router.push(`/topics/${topicId}/${paper.paper_id}`)
+                    }}
+                  >
+                    <PaperCard
+                      title={paper.paper_title}
+                      description={paper.paper_abstract}
+                      date={paper.paper_created_at.slice(0, 10)}
+                      onEdit={() => setEditingPaper(paper)}
+                      onDelete={() => {
+                        if (confirm('삭제하시겠습니까?')) {
+                          supabase
+                            .from('paper')
+                            .delete()
+                            .eq('paper_id', paper.paper_id)
+                            .then(refreshPapers)
+                        }
+                      }}
+                    />
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="overflow-x-auto bg-white rounded shadow">
+                <table className="min-w-full table-auto">
+                  <thead className="bg-gray-100">
+                    <tr>
+                      <th className="px-4 py-2 text-left">논문 제목</th>
+                      <th className="px-4 py-2 text-left">생성일</th>
+                      <th className="px-4 py-2 text-left">URL</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredPapers.map(paper => (
+                      <tr
+                        key={paper.paper_id}
+                        className="border-t hover:bg-gray-50 cursor-pointer"
+                        onClick={e => {
+                          const tgt = e.target as HTMLElement
+                          if (tgt.closest('button') || tgt.closest('a')) return
+                          router.push(`/topics/${topicId}/${paper.paper_id}`)
+                        }}
+                      >
+                        <td className="px-4 py-3 text-blue-600 underline">
+                          {paper.paper_title}
+                        </td>
+                        <td className="px-4 py-3">{paper.paper_created_at.slice(0, 10)}</td>
+                        <td className="px-4 py-3">
+                          {paper.paper_url ? (
+                            <a
+                              href={paper.paper_url}
+                              target="_blank"
+                              onClick={e => e.stopPropagation()}
+                              className="text-blue-600 underline"
+                            >
+                              열기
+                            </a>
+                          ) : (
+                            '-'
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )
+          ) : (
+            <div className="bg-gray-50 rounded-lg p-4 text-center text-gray-500">
+              아직 업로드된 논문이 없습니다.
+            </div>
+          )}
+        </div>
+
+        {/* 수정 모달 */}
+        {editingPaper && (
+          <EditPaperModal
+            paper={editingPaper}
+            onClose={() => setEditingPaper(null)}
+            onSave={async updated => {
+              await supabase
+                .from('paper')
+                .update({
+                  paper_title: updated.paper_title,
+                  paper_abstract: updated.paper_abstract,
+                })
+                .eq('paper_id', editingPaper.paper_id)
+              setEditingPaper(null)
+              refreshPapers()
+            }}
+          />
+        )}
+      </main>
     </div>
   )
 }

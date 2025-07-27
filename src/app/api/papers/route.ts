@@ -1,70 +1,107 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabaseClient'
 
-// ✅ GET: topics 테이블 전체 조회
-export async function GET() {
+/**
+ * ✅ GET: 특정 topic에 속한 논문 리스트 가져오기
+ *    /api/papers?topicId=123
+ */
+export async function GET(req: NextRequest) {
+  const { searchParams } = new URL(req.url)
+  const topicId = searchParams.get('topicId')
+
+  if (!topicId) {
+    return NextResponse.json({ error: 'topicId가 필요합니다.' }, { status: 400 })
+  }
+
   const { data, error } = await supabase
-    .from('topics')
+    .from('paper') // 실제 테이블 이름
     .select('*')
-    .order('topic_created_at', { ascending: false }) // 최신순 정렬
+    .eq('paper_topic_id', topicId)
+    .order('paper_created_at', { ascending: false })
+
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
+
   return NextResponse.json(data)
 }
 
-// ✅ POST: 새로운 topic 추가
+/**
+ * ✅ POST: 논문 추가하기
+ * body: { paper_topic_id, paper_title, paper_abstract }
+ */
 export async function POST(req: NextRequest) {
-  const { topic_user_id, topic_name, topic_description, topic_created_at } = await req.json()
+  const { paper_topic_id, paper_title, paper_abstract } = await req.json()
+
+  if (!paper_topic_id || !paper_title) {
+    return NextResponse.json({ error: '필수 값이 누락되었습니다.' }, { status: 400 })
+  }
 
   const { data, error } = await supabase
-    .from('topics')
+    .from('paper')
     .insert([
       {
-        topic_user_id,
-        topic_name,
-        topic_description,
-        topic_created_at,
-      },
+        paper_topic_id,
+        paper_title,
+        paper_abstract,
+        paper_created_at: new Date().toISOString()
+      }
     ])
     .select()
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
+
   return NextResponse.json({ success: true, inserted: data })
 }
 
-// ✅ PUT: topic 수정 (id 기준으로 topic_name / topic_description 수정)
+/**
+ * ✅ PUT: 논문 수정하기
+ * body: { paper_id, paper_title, paper_abstract }
+ */
 export async function PUT(req: NextRequest) {
-  const { topic_id, topic_name, topic_description } = await req.json()
+  const { paper_id, paper_title, paper_abstract } = await req.json()
+
+  if (!paper_id) {
+    return NextResponse.json({ error: 'paper_id가 필요합니다.' }, { status: 400 })
+  }
 
   const { error } = await supabase
-    .from('topics')
+    .from('paper')
     .update({
-      topic_name,
-      topic_description,
+      paper_title,
+      paper_abstract
     })
-    .eq('topic_id', topic_id)
+    .eq('paper_id', paper_id)
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
+
   return NextResponse.json({ success: true })
 }
 
-// ✅ DELETE: topic 삭제 (id 기준)
+/**
+ * ✅ DELETE: 논문 삭제하기
+ *    /api/papers?id=123
+ */
 export async function DELETE(req: NextRequest) {
   const { searchParams } = new URL(req.url)
   const id = searchParams.get('id')
 
+  if (!id) {
+    return NextResponse.json({ error: 'id가 필요합니다.' }, { status: 400 })
+  }
+
   const { error } = await supabase
-    .from('topics')
+    .from('paper')
     .delete()
-    .eq('topic_id', id)
+    .eq('paper_id', id)
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
+
   return NextResponse.json({ success: true })
 }
